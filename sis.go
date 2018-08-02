@@ -73,6 +73,21 @@ func getStretchPath(md5, width, height string) string {
 	buf.WriteByte(os.PathSeparator)
 	return buf.String()
 }
+
+func getDirFirstFile(dir string) (string, error) {
+	//获取目录信息
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	//查找第一个文件返回路径
+	for _, file := range files {
+		return dir + file.Name(), nil
+	}
+	return "", errors.New("目录中没有文件")
+}
+
 func saveFile(f multipart.File, fileName string) (md5Code string, err error) {
 	//计算文件MD5
 	h := md5.New()
@@ -110,6 +125,16 @@ func saveFile(f multipart.File, fileName string) (md5Code string, err error) {
 	return
 }
 
+//检测文件名合法性,包括长度和安全性检测
+func checkFileName(inputFileName string) bool {
+	if len(inputFileName) > maxFileNameLength ||
+		inputFileName != filepath.Base(inputFileName) {
+		log.Printf("收到非预期文件：%s", inputFileName)
+		return false
+	}
+	return true
+}
+
 func uploadHandler(w http.ResponseWriter, req *http.Request) {
 	//这个必须得有，客户端问的时候总要回答一下，否则测试页面无法工作
 	if strings.ToUpper(req.Method) == "OPTIONS" {
@@ -139,18 +164,22 @@ func uploadHandler(w http.ResponseWriter, req *http.Request) {
 		}
 
 		//解释请求
-		req.ParseMultipartForm(int64(length))
+		err := req.ParseMultipartForm(int64(length))
+		if err != nil {
+			log.Print(err)
+			return
+		}
 
 		//处理请求
 		if req.MultipartForm != nil {
 			//初始化返回值
 			var messageBuf bytes.Buffer
-			messageBuf.WriteByte('{')
-
+			messageBuf.WriteString(`[`)
 			for _, v := range req.MultipartForm.File {
 				for _, fileHead := range v {
+
 					//文件名长度检查
-					if len(fileHead.Filename) > maxFileNameLength {
+					if !checkFileName(fileHead.Filename) {
 						status = 413
 						message = "文件名长度超出50字节限制"
 						return
@@ -176,16 +205,14 @@ func uploadHandler(w http.ResponseWriter, req *http.Request) {
 					if messageBuf.Len() > 1 {
 						messageBuf.WriteByte(',')
 					}
-					messageBuf.WriteByte('"')
+					messageBuf.WriteString(`{"Name":"`)
 					messageBuf.WriteString(fileHead.Filename)
-					messageBuf.WriteByte('"')
-					messageBuf.WriteByte(':')
-					messageBuf.WriteByte('"')
+					messageBuf.WriteString(`", "MD5":"`)
 					messageBuf.WriteString(md5Code)
-					messageBuf.WriteByte('"')
+					messageBuf.WriteString(`"}`)
 				}
 			}
-			messageBuf.WriteByte('}')
+			messageBuf.WriteString("]")
 			status = 200
 			message = messageBuf.String()
 		}
@@ -198,27 +225,16 @@ func simpleDownHandler(w http.ResponseWriter, req *http.Request) {
 
 	//定位目录
 	md5Code := req.FormValue("md5")
-	srcPath := getSrcPath(md5Code)
 
-	//获取目录信息
-	files, err := ioutil.ReadDir(srcPath)
+	//获取文件路径
+	filePath, err := getDirFirstFile(getSrcPath(md5Code))
 	if err != nil {
 		w.WriteHeader(404)
 		return
-	}
-
-	//定位文件
-	for _, file := range files {
-		http.ServeFile(w, req, srcPath+file.Name())
-
-		//由于请求参数只有MD5码，只返回找到的第一个文件
-		//如果需要解决MD5碰撞，请使用full_down接口
+	} else {
+		http.ServeFile(w, req, filePath)
 		return
 	}
-
-	//目录为空，返回404错误
-	w.WriteHeader(404)
-	return
 }
 
 func checkParam(w, h string) (int, int, bool) {
@@ -234,20 +250,6 @@ func checkParam(w, h string) (int, int, bool) {
 		return 0, 0, false
 	}
 	return intW, intH, true
-}
-
-func getDirFirstFile(dir string) (string, error) {
-	//获取目录信息
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return "", err
-	}
-
-	//查找第一个文件返回路径
-	for _, file := range files {
-		return dir + file.Name(), nil
-	}
-	return "", errors.New("目录中没有文件")
 }
 
 func loadImage(path string) (img image.Image, err error) {
@@ -281,12 +283,18 @@ func saveImage(path string, img image.Image) error {
 	return err
 }
 
-func generateFile(md5, stretchPath string, w, h int) (string, error) {
+func generateFile(md5, stretchPath, fileName string, w, h int) (string, error) {
 	//找到原始文件
+	var srcFilePath string
+	var err error
 	srcPath := getSrcPath(md5)
-	srcFilePath, err := getDirFirstFile(srcPath)
-	if err != nil {
-		return "", err
+	if fileName != "" {
+		srcFilePath = srcPath + fileName
+	} else {
+		srcFilePath, err = getDirFirstFile(srcPath)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	//载入原始文件
@@ -340,7 +348,7 @@ func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 	stretchFullPath, err := getDirFirstFile(stretchPath)
 	if err != nil {
 		//目录或文件不存在，创建文件
-		stretchFullPath, err = generateFile(md5Code, stretchPath, intW, intH)
+		stretchFullPath, err = generateFile(md5Code, stretchPath, "", intW, intH)
 		if err != nil {
 			w.WriteHeader(500)
 			return
@@ -362,10 +370,56 @@ func fullDownHandler(w http.ResponseWriter, req *http.Request) {
 	//定位目录
 	md5Code := req.FormValue("md5")
 	fileName := req.FormValue("file_name")
+	if !checkFileName(fileName) {
+		w.WriteHeader(404)
+		return
+	}
+
 	filePath := getSrcPath(md5Code)
 
 	http.ServeFile(w, req, filePath+fileName)
 	return
+}
+
+func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
+	//参数解释
+	req.ParseForm()
+
+	//取参
+	md5Code := req.FormValue("md5")
+	fileName := req.FormValue("file_name")
+	width := req.FormValue("h")
+	height := req.FormValue("w")
+	if !checkFileName(fileName) {
+		w.WriteHeader(404)
+		return
+	}
+	intW, intH, ret := checkParam(width, height)
+	if !ret {
+		w.WriteHeader(404)
+		return
+	}
+
+	//定位路径
+	stretchPath := getStretchPath(md5Code, width, height)
+	stretchFullPath := stretchPath + fileName
+
+	//判断文件是否存在
+	if _, err := os.Stat(stretchFullPath); os.IsNotExist(err) {
+		//文件不存在，创建文件
+		_, err = generateFile(md5Code, stretchPath, fileName, intW, intH)
+		if err != nil {
+			w.WriteHeader(500)
+			return
+		} else {
+			http.ServeFile(w, req, stretchFullPath)
+			return
+		}
+	} else {
+		//缩放文件已存在，直接返回
+		http.ServeFile(w, req, stretchFullPath)
+		return
+	}
 }
 
 func main() {
@@ -373,7 +427,7 @@ func main() {
 	http.HandleFunc("/simple_down", simpleDownHandler)
 	http.HandleFunc("/full_down", fullDownHandler)
 	http.HandleFunc("/stretch_simple_down", stretchSimpleDownHandler)
-	//http.HandleFunc("/stretch_full_down", stretchFullDownHandler)
+	http.HandleFunc("/stretch_full_down", stretchFullDownHandler)
 
 	var port = flag.String("port", "3333", "监听端口")
 	flag.StringVar(&imagePath, "image", "image", "图片存储目录")
@@ -409,5 +463,4 @@ func main() {
 	}
 
 	<-idleConnsClosed
-
 }
