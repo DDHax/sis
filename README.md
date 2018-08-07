@@ -7,17 +7,16 @@ simple image server 为简单而生
 3. 实现根据MD5码和原始文件名下载接口    
 4. 实现各下载接口对应的缩放接口           
 
-关于原始文件名：
+关于原始文件名：    
 sis上传下载都可带上原始文件名，如此实现的目的是防止MD5碰撞的发生，即使两副图像的MD5码相同，只要原始文件名不同，也不会发生冲突   
 
-关于graphics包：
-由于官方发行包中暂无实现图像缩放功能的包，找了个未发行但是似乎也是google搞的版本（https://code.google.com/archive/p/graphics-go/）,阉割后直接内置到sis中
-
+关于graphics包：    
+由于官方发行包中暂无实现图像缩放功能的包，找了个半官方版本阉割后直接内置到sis中（https://code.google.com/archive/p/graphics-go/)
 
 简易使用指南：    
 1. 下载安装golang(https://golang.google.cn/)    
 2. go get github.com/DDHax/sis    
-3. cd $GOPATH/src/github.com/DDHax/sis    
+3. cd $GOPATH/go/src/github.com/DDHax/sis    
 4. go build sis.go   
 5. nohup ./sis &
 
