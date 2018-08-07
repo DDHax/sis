@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -10,7 +11,11 @@ import (
 )
 
 const (
-	urlUp = "http://127.0.0.1:3333/up"
+	urlUp                = "http://127.0.0.1:3333/up"
+	urlSimpleDown        = "http://127.0.0.1:3333/simple_down?md5=%s"
+	urlStretchSimpleDown = "http://127.0.0.1:3333/stretch_simple_down?md5=%s&w=%d&h=%d"
+	urlFullDown          = "http://127.0.0.1:3333/full_down?md5=%s&file_name=%s"
+	urlStretchFullDown   = "http://127.0.0.1:3333/stretch_full_down?md5=%s&file_name=%s&w=%d&h=%d"
 )
 
 func singleUpload(fileName string) (string, error) {
@@ -82,4 +87,60 @@ func multipleUpload(files []string) (string, error) {
 	body, err := ioutil.ReadAll(resp.Body)
 	content := string(body)
 	return content, nil
+}
+
+func simpleDown(md5 string) ([]byte, error) {
+	url := fmt.Sprintf(urlSimpleDown, md5)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func stretchSimpleDown(md5 string, w, h int) ([]byte, error) {
+	url := fmt.Sprintf(urlStretchSimpleDown, md5, w, h)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func fullDown(md5, fileName string) ([]byte, error) {
+	url := fmt.Sprintf(urlFullDown, md5, fileName)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func stretchFullDown(md5, fileName string, w, h int) ([]byte, error) {
+	url := fmt.Sprintf(urlStretchFullDown, md5, fileName, w, h)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
 }

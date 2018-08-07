@@ -271,13 +271,14 @@ func saveImage(path string, img image.Image) error {
 
 	ext := filepath.Ext(path)
 	switch ext {
-	case "jpg", "jpeg":
+	case ".jpg", ".jpeg":
 		err = jpeg.Encode(file, img, &jpeg.Options{Quality: 100})
-	case "png":
+	case ".png":
 		err = png.Encode(file, img)
-	case "gif":
+	case ".gif":
 		err = gif.Encode(file, img, nil)
 	default:
+		log.Print(ext)
 		err = errors.New("找不到编码器")
 	}
 	return err
@@ -333,8 +334,8 @@ func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 
 	//检测参数合法性
 	md5Code := req.FormValue("md5")
-	width := req.FormValue("h")
-	height := req.FormValue("w")
+	height := req.FormValue("h")
+	width := req.FormValue("w")
 	intW, intH, ret := checkParam(width, height)
 	if !ret {
 		w.WriteHeader(404)
@@ -351,6 +352,7 @@ func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 		stretchFullPath, err = generateFile(md5Code, stretchPath, "", intW, intH)
 		if err != nil {
 			w.WriteHeader(500)
+			log.Print(err)
 			return
 		} else {
 			http.ServeFile(w, req, stretchFullPath)
@@ -388,8 +390,8 @@ func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
 	//取参
 	md5Code := req.FormValue("md5")
 	fileName := req.FormValue("file_name")
-	width := req.FormValue("h")
-	height := req.FormValue("w")
+	height := req.FormValue("h")
+	width := req.FormValue("w")
 	if !checkFileName(fileName) {
 		w.WriteHeader(404)
 		return

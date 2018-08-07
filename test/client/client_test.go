@@ -1,7 +1,14 @@
 package client
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"strings"
 	"testing"
 )
@@ -87,5 +94,67 @@ func Test_multipleUpload(t *testing.T) {
 		if m.Name != clientTests[i].fileName || m.MD5 != clientTests[i].md5 {
 			t.Errorf("非预期返回值, 预期[%s][%s] , 实际[%s][%s]", clientTests[i].fileName, clientTests[i].md5, m.Name, m.MD5)
 		}
+	}
+}
+
+func Test_simpleDown(t *testing.T) {
+	buf, err := simpleDown(clientTests[0].md5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcCode := md5.Sum(buf)
+	md5Code := hex.EncodeToString(srcCode[:])
+	if md5Code != clientTests[0].md5 {
+		t.Fatal(err)
+	}
+}
+
+func Test_stretchSimpleDown(t *testing.T) {
+	const w = 200
+	const h = 100
+	data, err := stretchSimpleDown(clientTests[0].md5, w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := bytes.NewBuffer(data)
+
+	img, _, err := image.Decode(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rect := img.Bounds()
+	if rect.Dx() != w || rect.Dy() != h {
+		t.Fatal(err)
+	}
+}
+
+func Test_fullDown(t *testing.T) {
+	buf, err := fullDown(clientTests[1].md5, clientTests[1].fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcCode := md5.Sum(buf)
+	md5Code := hex.EncodeToString(srcCode[:])
+	if md5Code != clientTests[1].md5 {
+		t.Fatal(err)
+	}
+}
+
+func Test_stretchFullDown(t *testing.T) {
+	const w = 300
+	const h = 200
+	data, err := stretchFullDown(clientTests[1].md5, clientTests[1].fileName, w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := bytes.NewBuffer(data)
+
+	img, _, err := image.Decode(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rect := img.Bounds()
+	if rect.Dx() != w || rect.Dy() != h {
+		t.Fatal(err)
 	}
 }
