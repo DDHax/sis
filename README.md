@@ -16,7 +16,7 @@ sis上传下载都可带上原始文件名，如此实现的目的是防止MD5�
 简易使用指南：    
 1. 下载安装golang(https://golang.google.cn/)    
 2. go get github.com/DDHax/sis    
-3. cd $GOPATH/go/src/github.com/DDHax/sis    
+3. cd $HOME/go/src/github.com/DDHax/sis
 4. go build sis.go   
 5. nohup ./sis &
 
