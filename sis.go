@@ -101,7 +101,7 @@ func saveFile(f multipart.File, fileName string) (md5Code string, err error) {
 
 	//创建目录
 	srcPath := getSrcPath(md5Code)
-	err = os.MkdirAll(srcPath, os.ModeType)
+	err = os.MkdirAll(srcPath, os.ModePerm)
 	if err != nil {
 		return
 	}
@@ -314,7 +314,7 @@ func generateFile(md5, stretchPath, fileName string, w, h int) (string, error) {
 	}
 
 	//创建目标目录
-	err = os.MkdirAll(stretchPath, os.ModeType)
+	err = os.MkdirAll(stretchPath, os.ModePerm)
 	if err != nil {
 		return "", err
 	}
