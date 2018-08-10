@@ -56,7 +56,7 @@ func multipleUpload(files []string) (string, error) {
 
 	var buf bytes.Buffer
 	mt := multipart.NewWriter(&buf)
-	for i := 0; i < 2; i++ {
+	for i := 0; i < len(files); i++ {
 		file, err := os.Open(files[i])
 		if err != nil {
 			return "", err
