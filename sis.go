@@ -424,7 +424,12 @@ func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func defaultHandler(w http.ResponseWriter, req *http.Request) {
+	http.ServeFile(w, req, "./test/upload.html")
+}
+
 func main() {
+	http.HandleFunc("/", defaultHandler)
 	http.HandleFunc("/up", uploadHandler)
 	http.HandleFunc("/simple_down", simpleDownHandler)
 	http.HandleFunc("/full_down", fullDownHandler)
