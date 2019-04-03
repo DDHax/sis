@@ -12,7 +12,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -22,8 +21,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/DDHax/sis/graphics"
+	"github.com/DDHax/sis/store"
 )
 
 //文件大小上限，此参数将设置为接收图片时分配的内存上限
@@ -31,9 +32,6 @@ const maxFileSize = 1024 * 1024 * 50
 
 //文件名长度上限
 const maxFileNameLength = 50
-
-//原始文件保存目录名
-const sourceDirName = "src"
 
 //定义缩放图片的极限尺寸
 const (
@@ -43,50 +41,7 @@ const (
 	minHeight = 5
 )
 
-var imagePath string
-
-func md5ToPath(md5Code string) (path string) {
-	var buf bytes.Buffer
-	buf.WriteString(imagePath)
-	buf.WriteByte(os.PathSeparator)
-	for _, item := range md5Code {
-		buf.WriteRune(item)
-		buf.WriteByte(os.PathSeparator)
-	}
-	return buf.String()
-}
-
-func getSrcPath(md5 string) string {
-	var buf bytes.Buffer
-	buf.WriteString(md5ToPath(md5))
-	buf.WriteString(sourceDirName)
-	buf.WriteByte(os.PathSeparator)
-	return buf.String()
-}
-
-func getStretchPath(md5, width, height string) string {
-	var buf bytes.Buffer
-	buf.WriteString(md5ToPath(md5))
-	buf.WriteString(width)
-	buf.WriteByte('_')
-	buf.WriteString(height)
-	buf.WriteByte(os.PathSeparator)
-	return buf.String()
-}
-
-func getDirFirstFile(dir string) (string, error) {
-	//获取目录信息
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return "", err
-	}
-
-	//查找第一个文件返回路径
-	for _, file := range files {
-		return dir + file.Name(), nil
-	}
-	return "", errors.New("目录中没有文件")
-}
+var zeroTime time.Time
 
 func saveFile(f multipart.File, fileName string) (md5Code string, err error) {
 	//计算文件MD5
@@ -99,29 +54,7 @@ func saveFile(f multipart.File, fileName string) (md5Code string, err error) {
 	//16进制md5转字符串格式
 	md5Code = hex.EncodeToString(ret)
 
-	//创建目录
-	srcPath := getSrcPath(md5Code)
-	err = os.MkdirAll(srcPath, os.ModePerm)
-	if err != nil {
-		return
-	}
-
-	//创建文件
-	destFile, err := os.Create(srcPath + fileName)
-	if err != nil {
-		return
-	}
-	defer destFile.Close()
-
-	//此处必须Seek回起点，否则copy不到东西
-	_, err = f.Seek(0, 0)
-	if err != nil {
-		return
-	}
-
-	//文件落地
-	_, err = io.Copy(destFile, f)
-
+	err = store.Write(f, md5Code, fileName)
 	return
 }
 
@@ -223,18 +156,18 @@ func simpleDownHandler(w http.ResponseWriter, req *http.Request) {
 	//参数解释
 	req.ParseForm()
 
-	//定位目录
+	//读取文件
 	md5Code := req.FormValue("md5")
-
-	//获取文件路径
-	filePath, err := getDirFirstFile(getSrcPath(md5Code))
+	var fileName string
+	data, err := store.Read(md5Code, &fileName)
 	if err != nil {
+		log.Print(err)
 		w.WriteHeader(404)
 		return
-	} else {
-		http.ServeFile(w, req, filePath)
-		return
 	}
+
+	//回复文件
+	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(data))
 }
 
 func checkParam(w, h string) (int, int, bool) {
@@ -263,69 +196,33 @@ func loadImage(path string) (img image.Image, err error) {
 	return
 }
 
-func saveImage(path string, img image.Image) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-
-	ext := filepath.Ext(path)
-	switch ext {
-	case ".jpg", ".jpeg":
-		err = jpeg.Encode(file, img, &jpeg.Options{Quality: 100})
-	case ".png":
-		err = png.Encode(file, img)
-	case ".gif":
-		err = gif.Encode(file, img, nil)
-	default:
-		log.Print(ext)
-		err = errors.New("找不到编码器")
-	}
-	return err
-}
-
-func generateFile(md5, stretchPath, fileName string, w, h int) (string, error) {
-	//找到原始文件
-	var srcFilePath string
-	var err error
-	srcPath := getSrcPath(md5)
-	if fileName != "" {
-		srcFilePath = srcPath + fileName
-	} else {
-		srcFilePath, err = getDirFirstFile(srcPath)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	//载入原始文件
-	src, err := loadImage(srcFilePath)
-	if err != nil {
-		return "", err
-	}
+func scaleImage(data []byte, destW, destH int) ([]byte, error) {
+	//解码原始图像
+	img, imgType, err := image.Decode(bytes.NewReader(data))
 
 	//建立目标图形
-	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	dst := image.NewRGBA(image.Rect(0, 0, destW, destH))
 
 	//执行缩放
-	err = graphics.Scale(dst, src)
+	err = graphics.Scale(dst, img)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	//创建目标目录
-	err = os.MkdirAll(stretchPath, os.ModePerm)
-	if err != nil {
-		return "", err
+	//编码缩放后图像
+	var buf bytes.Buffer
+	switch imgType {
+	case ".jpg", ".jpeg":
+		err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 100})
+	case ".png":
+		err = png.Encode(&buf, dst)
+	case ".gif":
+		err = gif.Encode(&buf, dst, nil)
+	default:
+		log.Print(imgType)
+		err = errors.New("找不到编码器")
 	}
-
-	//目标图形存盘
-	dstFilePath := stretchPath + filepath.Base(srcFilePath)
-	err = saveImage(dstFilePath, dst)
-	if err != nil {
-		return "", err
-	}
-	return dstFilePath, nil
+	return nil, err
 }
 
 func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
@@ -342,27 +239,25 @@ func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	//定位目录
-	stretchPath := getStretchPath(md5Code, width, height)
-
-	//查找目录中第一个文件
-	stretchFullPath, err := getDirFirstFile(stretchPath)
+	//获取原始文件
+	var fileName string
+	data, err := store.Read(md5Code, &fileName)
 	if err != nil {
-		//目录或文件不存在，创建文件
-		stretchFullPath, err = generateFile(md5Code, stretchPath, "", intW, intH)
-		if err != nil {
-			w.WriteHeader(500)
-			log.Print(err)
-			return
-		} else {
-			http.ServeFile(w, req, stretchFullPath)
-			return
-		}
-	} else {
-		//找到缩放文件，直接返回
-		http.ServeFile(w, req, stretchFullPath)
+		log.Print(err)
+		w.WriteHeader(404)
 		return
 	}
+
+	//图像缩放
+	dst, err := scaleImage(data, intW, intH)
+	if err != nil {
+		log.Print(err)
+		w.WriteHeader(404)
+		return
+	}
+
+	//回复文件
+	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(dst))
 }
 
 func fullDownHandler(w http.ResponseWriter, req *http.Request) {
@@ -377,10 +272,14 @@ func fullDownHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	filePath := getSrcPath(md5Code)
+	data, err := store.Read(md5Code, &fileName)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
 
-	http.ServeFile(w, req, filePath+fileName)
-	return
+	//回复文件
+	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(data))
 }
 
 func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
@@ -402,26 +301,24 @@ func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	//定位路径
-	stretchPath := getStretchPath(md5Code, width, height)
-	stretchFullPath := stretchPath + fileName
-
-	//判断文件是否存在
-	if _, err := os.Stat(stretchFullPath); os.IsNotExist(err) {
-		//文件不存在，创建文件
-		_, err = generateFile(md5Code, stretchPath, fileName, intW, intH)
-		if err != nil {
-			w.WriteHeader(500)
-			return
-		} else {
-			http.ServeFile(w, req, stretchFullPath)
-			return
-		}
-	} else {
-		//缩放文件已存在，直接返回
-		http.ServeFile(w, req, stretchFullPath)
+	//获取原始文件
+	data, err := store.Read(md5Code, &fileName)
+	if err != nil {
+		log.Print(err)
+		w.WriteHeader(404)
 		return
 	}
+
+	//图像缩放
+	dst, err := scaleImage(data, intW, intH)
+	if err != nil {
+		log.Print(err)
+		w.WriteHeader(404)
+		return
+	}
+
+	//回复文件
+	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(dst))
 }
 
 func defaultHandler(w http.ResponseWriter, req *http.Request) {
@@ -436,10 +333,13 @@ func main() {
 	http.HandleFunc("/stretch_simple_down", stretchSimpleDownHandler)
 	http.HandleFunc("/stretch_full_down", stretchFullDownHandler)
 
-	var port = flag.String("port", "3333", "监听端口")
-	flag.StringVar(&imagePath, "image", "image", "图片存储目录")
-
+	//参数解释
+	port := flag.String("port", "3333", "监听端口")
+	storeType := flag.Bool("localStore", true, "存储类型,true为本地存储，false为远程存储")
+	imagePath := flag.String("image", "image", "本地存储时表示本地目录，远程存储时表示远程主机地址")
 	flag.Parse()
+
+	store.Init(*imagePath, *storeType)
 
 	var srv http.Server
 	srv.Addr = ":" + *port
