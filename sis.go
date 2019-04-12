@@ -212,17 +212,17 @@ func scaleImage(data []byte, destW, destH int) ([]byte, error) {
 	//编码缩放后图像
 	var buf bytes.Buffer
 	switch imgType {
-	case ".jpg", ".jpeg":
+	case "jpg", "jpeg":
 		err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 100})
-	case ".png":
+	case "png":
 		err = png.Encode(&buf, dst)
-	case ".gif":
+	case "gif":
 		err = gif.Encode(&buf, dst, nil)
 	default:
 		log.Print(imgType)
 		err = errors.New("找不到编码器")
 	}
-	return nil, err
+	return buf.Bytes(), err
 }
 
 func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
@@ -337,9 +337,10 @@ func main() {
 	port := flag.String("port", "3333", "监听端口")
 	storeType := flag.Bool("localStore", true, "存储类型,true为本地存储，false为远程存储")
 	imagePath := flag.String("image", "image", "本地存储时表示本地目录，远程存储时表示远程主机地址")
+	cacheSize := flag.Int("cache", 100, "内存cache最大值，单位为M，0表示不启用")
 	flag.Parse()
 
-	store.Init(*imagePath, *storeType)
+	store.Init(*imagePath, *storeType, *cacheSize)
 
 	var srv http.Server
 	srv.Addr = ":" + *port
