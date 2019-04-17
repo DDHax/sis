@@ -9,7 +9,7 @@ import (
 	"image"
 	"image/draw"
 
-	"github.com/DDHax/sis/graphics/interp"
+	"github.com/DDHax/sis/store/graphics/interp"
 )
 
 // Scale produces a scaled version of the image using bilinear interpolation.

@@ -10,7 +10,7 @@ import (
 	"image/draw"
 	"math"
 
-	"github.com/DDHax/sis/graphics/interp"
+	"github.com/DDHax/sis/store/graphics/interp"
 )
 
 // I is the identity Affine transform matrix.

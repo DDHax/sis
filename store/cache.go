@@ -85,8 +85,8 @@ func (c *cache) derectWrite(key string, data []byte) {
 	c.useSize = c.useSize + int64(computeSize(len(key), len(data)))
 }
 
-func (c *cache) read(md5Code string, fileName *string) ([]byte, error) {
-	if v, ok := c.data[md5Code+*fileName]; ok {
+func (c *cache) read(key string) ([]byte, error) {
+	if v, ok := c.data[key]; ok {
 		return v, nil
 	}
 	return nil, errors.New("缓存未命中")
@@ -102,4 +102,8 @@ func (c *cache) memWrite(key string, data []byte) error {
 	//写入缓存
 	c.derectWrite(key, data)
 	return nil
+}
+
+func (c cache) isEnable() bool {
+	return c.maxSize > 0
 }

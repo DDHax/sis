@@ -5,12 +5,8 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"image"
-	"image/gif"
-	"image/jpeg"
-	"image/png"
 	"io"
 	"log"
 	"mime/multipart"
@@ -23,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DDHax/sis/graphics"
 	"github.com/DDHax/sis/store"
 )
 
@@ -159,7 +154,7 @@ func simpleDownHandler(w http.ResponseWriter, req *http.Request) {
 	//读取文件
 	md5Code := req.FormValue("md5")
 	var fileName string
-	data, err := store.Read(md5Code, &fileName)
+	data, err := store.Read(md5Code, &fileName, 0, 0)
 	if err != nil {
 		log.Print(err)
 		w.WriteHeader(404)
@@ -196,35 +191,6 @@ func loadImage(path string) (img image.Image, err error) {
 	return
 }
 
-func scaleImage(data []byte, destW, destH int) ([]byte, error) {
-	//解码原始图像
-	img, imgType, err := image.Decode(bytes.NewReader(data))
-
-	//建立目标图形
-	dst := image.NewRGBA(image.Rect(0, 0, destW, destH))
-
-	//执行缩放
-	err = graphics.Scale(dst, img)
-	if err != nil {
-		return nil, err
-	}
-
-	//编码缩放后图像
-	var buf bytes.Buffer
-	switch imgType {
-	case "jpg", "jpeg":
-		err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 100})
-	case "png":
-		err = png.Encode(&buf, dst)
-	case "gif":
-		err = gif.Encode(&buf, dst, nil)
-	default:
-		log.Print(imgType)
-		err = errors.New("找不到编码器")
-	}
-	return buf.Bytes(), err
-}
-
 func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 	//参数解释
 	req.ParseForm()
@@ -241,15 +207,7 @@ func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 
 	//获取原始文件
 	var fileName string
-	data, err := store.Read(md5Code, &fileName)
-	if err != nil {
-		log.Print(err)
-		w.WriteHeader(404)
-		return
-	}
-
-	//图像缩放
-	dst, err := scaleImage(data, intW, intH)
+	data, err := store.Read(md5Code, &fileName, intW, intH)
 	if err != nil {
 		log.Print(err)
 		w.WriteHeader(404)
@@ -257,7 +215,7 @@ func stretchSimpleDownHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	//回复文件
-	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(dst))
+	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(data))
 }
 
 func fullDownHandler(w http.ResponseWriter, req *http.Request) {
@@ -272,7 +230,7 @@ func fullDownHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	data, err := store.Read(md5Code, &fileName)
+	data, err := store.Read(md5Code, &fileName, 0, 0)
 	if err != nil {
 		w.WriteHeader(404)
 		return
@@ -301,16 +259,8 @@ func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	//获取原始文件
-	data, err := store.Read(md5Code, &fileName)
-	if err != nil {
-		log.Print(err)
-		w.WriteHeader(404)
-		return
-	}
-
-	//图像缩放
-	dst, err := scaleImage(data, intW, intH)
+	//获取文件
+	data, err := store.Read(md5Code, &fileName, intW, intH)
 	if err != nil {
 		log.Print(err)
 		w.WriteHeader(404)
@@ -318,7 +268,7 @@ func stretchFullDownHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	//回复文件
-	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(dst))
+	http.ServeContent(w, req, fileName, zeroTime, bytes.NewReader(data))
 }
 
 func defaultHandler(w http.ResponseWriter, req *http.Request) {
