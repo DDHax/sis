@@ -36,6 +36,10 @@ var clientTests = []clientTest{
 		fileName: "12345123451234512345123451234512345123451234512345.jpg",
 		md5:      "685264ff36effb53d7ecdb81d3b89b22",
 	},
+	{
+		fileName: "test4.jpg",
+		md5:      "adc118ef03d257171f8a251cfd15de94",
+	},
 }
 
 func Test_singleUpload(t *testing.T) {
@@ -65,6 +69,23 @@ func Test_singleUpload(t *testing.T) {
 		if m.Name != clientTests[0].fileName || m.MD5 != clientTests[0].md5 {
 			t.Errorf("非预期返回值, 预期[%s][%s] , 实际[%s][%s]", clientTests[0].fileName, clientTests[0].md5, m.Name, m.MD5)
 		}
+	}
+}
+
+func Test_derectUpload(t *testing.T) {
+	err := derectUpload(clientTests[4].fileName)
+	if err != nil {
+		t.Error(err)
+	}
+
+	buf, err := fullDown(clientTests[4].md5, clientTests[4].fileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcCode := md5.Sum(buf)
+	md5Code := hex.EncodeToString(srcCode[:])
+	if md5Code != clientTests[4].md5 {
+		t.Fatal(err)
 	}
 }
 

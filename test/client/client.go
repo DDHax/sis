@@ -3,7 +3,11 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -12,6 +16,7 @@ import (
 
 const (
 	urlUp                = "http://127.0.0.1:3333/up"
+	urlDerectUp          = "http://127.0.0.1:3333/derect_up"
 	urlSimpleDown        = "http://127.0.0.1:3333/simple_down?md5=%s"
 	urlStretchSimpleDown = "http://127.0.0.1:3333/stretch_simple_down?md5=%s&w=%d&h=%d"
 	urlFullDown          = "http://127.0.0.1:3333/full_down?md5=%s&file_name=%s"
@@ -50,6 +55,53 @@ func singleUpload(fileName string) (string, error) {
 	body, err := ioutil.ReadAll(resp.Body)
 	content := string(body)
 	return content, nil
+}
+
+func derectUpload(fileName string) error {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	//计算文件MD5
+	h := md5.New()
+	if _, err = io.Copy(h, file); err != nil {
+		return err
+	}
+	ret := h.Sum(nil)
+
+	//16进制md5转字符串格式
+	md5Code := hex.EncodeToString(ret)
+
+	var buf bytes.Buffer
+	mt := multipart.NewWriter(&buf)
+	fileWriter, err := mt.CreateFormFile(md5Code, fileName)
+	if err != nil {
+		return err
+	}
+	file.Seek(0, 0)
+	fileReader := bufio.NewReader(file)
+	fileReader.WriteTo(fileWriter)
+	mt.Close()
+
+	contentType := "multipart/form-data;boundary=" + mt.Boundary()
+	req, err := http.NewRequest("POST", urlDerectUp, &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		err = errors.New(resp.Status)
+	}
+
+	return err
 }
 
 func multipleUpload(files []string) (string, error) {

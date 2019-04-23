@@ -147,6 +147,62 @@ func uploadHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func derectUploadHandler(w http.ResponseWriter, req *http.Request) {
+	//这个必须得有，客户端问的时候总要回答一下，否则测试页面无法工作
+	if strings.ToUpper(req.Method) == "OPTIONS" {
+		w.Header().Set("Access-Control-Allow-Method", "POST")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(204)
+		return
+	}
+
+	//响应
+	status := 400
+	message := "不要乱来"
+	defer func(w http.ResponseWriter) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(status)
+		w.Write([]byte(message))
+	}(w)
+
+	//处理上传请求
+	if strings.ToUpper(req.Method) == "POST" {
+
+		//解释请求
+		length, _ := strconv.Atoi(req.Header.Get("Content-Length"))
+		err := req.ParseMultipartForm(int64(length))
+		if err != nil {
+			log.Print(err)
+			return
+		}
+
+		//处理请求
+		if req.MultipartForm != nil {
+			for k, v := range req.MultipartForm.File {
+				if len(v) > 0 {
+					file, err := v[0].Open()
+					if err != nil {
+						status = 500
+						message = "发生诡异错误"
+						return
+					}
+
+					//保存文件
+					err = store.Write(file, k, v[0].Filename)
+					if err != nil {
+						status = 500
+						message = "创建文件失败"
+						return
+					}
+				}
+				break
+			}
+			message = "上传完成"
+			status = 200
+		}
+	}
+}
+
 func simpleDownHandler(w http.ResponseWriter, req *http.Request) {
 	//参数解释
 	req.ParseForm()
@@ -278,6 +334,7 @@ func defaultHandler(w http.ResponseWriter, req *http.Request) {
 func main() {
 	http.HandleFunc("/", defaultHandler)
 	http.HandleFunc("/up", uploadHandler)
+	http.HandleFunc("/derect_up", derectUploadHandler)
 	http.HandleFunc("/simple_down", simpleDownHandler)
 	http.HandleFunc("/full_down", fullDownHandler)
 	http.HandleFunc("/stretch_simple_down", stretchSimpleDownHandler)
